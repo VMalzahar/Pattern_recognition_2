@@ -1,66 +1,48 @@
 import numpy as np
 
-def lda(X, y):
+def lda(data, target, n_dim=None):
     """
-    执行线性判别分析（LDA）
-    
-    参数:
-    X -- 输入数据矩阵，每行是一个样本
-    y -- 样本的类别标签
-    
-    返回:
-    W -- 投影矩阵
-    """
-    # 获取类别
-    classes = np.unique(y)
-    
-    # 计算每个类别的均值向量
-    mean_vectors = []
-    for cls in classes:
-        mean_vectors.append(np.mean(X[y == cls], axis=0))
-    mean_vectors = np.array(mean_vectors)
-    
-    # 计算类内散度矩阵 Sw
-    n_features = X.shape[1]
-    Sw = np.zeros((n_features, n_features))
-    for cls, mean_vec in zip(classes, mean_vectors):
-        class_sc_mat = np.zeros((n_features, n_features))
-        for row in X[y == cls]:
-            row, mean_vec = row.reshape(n_features, 1), mean_vec.reshape(n_features, 1)
-            class_sc_mat += (row - mean_vec).dot((row - mean_vec).T)
-        Sw += class_sc_mat
-    
-    # 计算总均值向量
-    overall_mean = np.mean(X, axis=0)
-    
-    # 计算类间散度矩阵 Sb
-    Sb = np.zeros((n_features, n_features))
-    for i, mean_vec in enumerate(mean_vectors):
-        n = X[y == classes[i]].shape[0]
-        mean_vec = mean_vec.reshape(n_features, 1)
-        overall_mean = overall_mean.reshape(n_features, 1)
-        Sb += n * (mean_vec - overall_mean).dot((mean_vec - overall_mean).T)
-    
-    # 计算 Sw^-1 * Sb
-    eig_vals, eig_vecs = np.linalg.eig(np.linalg.inv(Sw).dot(Sb))
-    
-    # 选择前 k 个特征向量（对应于最大的 k 个特征值）
-    eig_pairs = [(np.abs(eig_vals[i]), eig_vecs[:, i]) for i in range(len(eig_vals))]
-    eig_pairs = sorted(eig_pairs, key=lambda k: k[0], reverse=True)
-    
-    W = np.hstack([eig_pairs[i][1].reshape(n_features, 1) for i in range(len(classes) - 1)])
-    
-    return W
+    线性判别分析(LDA)
 
-# 测试 LDA 函数
-if __name__ == "__main__":
-    from sklearn import datasets
-    iris = datasets.load_iris()
-    X = iris.data
-    y = iris.target
+    参数:
+    data -- 输入数据，每行表示一个样本，每列表示一个特征
+    target -- 样本标签，用于区分不同类别
+    n_dim -- 输出数据的维度，默认为类别数，不能大于类别数
+
+    返回:
+    w -- 投影矩阵，可以用于对数据降维。
+    """
     
-    W = lda(X, y)
-    X_lda = X.dot(W)
+    # 获取类别数
+    clusters = np.unique(target)
+
+    # 如果未指定输出维度，则设为类别数
+    if n_dim is None:
+        n_dim = len(clusters)
+
+    # 检查输出维度是否合法
+    if n_dim > len(clusters):
+        raise ValueError("n_dim too large")
+
+    # 计算类内散度矩阵Sw
+    Sw = np.zeros((data.shape[1], data.shape[1]))
+    for i in clusters:
+        datai = data[target == i]
+        datai = datai - datai.mean(axis=0)
+        Sw += datai.T @ datai
+
+    # 计算类间散度矩阵SB
+    Sb = np.zeros((data.shape[1], data.shape[1]))
+    u = data.mean(axis=0)
+    for i in clusters:
+        Ni = data[target == i].shape[0]
+        ui = data[target == i].mean(axis=0)
+        Sb += Ni * (ui - u).reshape(-1, 1) @ (ui - u).reshape(1, -1)
+
+    # 计算投影矩阵w
+    S = np.linalg.inv(Sw) @ Sb
+    eig_values, eig_vectors = np.linalg.eigh(S)
     
-    print("投影矩阵 W:\n", W)
-    print("降维后的数据:\n", X_lda)
+    sorted_indices = np.argsort(-eig_values)[:n_dim]
+    w = eig_vectors[:, sorted_indices]
+    return w
